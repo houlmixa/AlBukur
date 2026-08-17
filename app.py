@@ -37,11 +37,11 @@ PARTICIPANTS = {
     "Amina": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
     "Fatima": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
     "Lamiae": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
-    "Ouamima": "Se réveiller avec l'adhan ou à 6 heures au plus tard"
+    "Oumaima": "Se réveiller avec l'adhan ou à 6 heures au plus tard"
 }
 
 MAX_PAUSE_DAYS = 10
-START_DATE = date(2026, 8, 1)
+START_DATE = date(2026, 8, 17)
 
 # --- CONNEXION GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -154,37 +154,83 @@ def calendar_dialog(user: str, metrics: dict, today: date):
     st.caption(f"🎯 Objectif : {metrics['goal']}")
     
     user_history = metrics["history"]
-    cal = calendar.Calendar(firstweekday=0)
+    cal = calendar.Calendar(firstweekday=0)  # Lundi en premier
     month_days = cal.monthdatescalendar(today.year, today.month)
     
     mois_fr = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
     st.write(f"### {mois_fr[today.month - 1]} {today.year}")
     
+    # CSS Grid styles for strict 7-column layout on all screen sizes
+    grid_css = """
+    <style>
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        .cal-header {
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-align: center;
+            color: #888;
+            padding: 4px 0;
+        }
+        .cal-cell {
+            aspect-ratio: 1 / 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            line-height: 1.1;
+        }
+        .cell-empty { background: transparent; }
+        .cell-completed { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        .cell-paused { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+        .cell-missed { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .cell-today { background: #e0f2fe; color: #075985; border: 1px dashed #0284c7; }
+        .cell-future { background: rgba(128,128,128,0.06); color: #9ca3af; }
+        .cal-badge { font-size: 0.7rem; }
+    </style>
+    """
+    
+    # Build HTML grid
     headers = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
-    cols = st.columns(7)
-    for i, h in enumerate(headers):
-        cols[i].caption(f"**{h}**")
-        
+    html_items = [f'<div class="cal-header">{h}</div>' for h in headers]
+    
     for week in month_days:
-        cols = st.columns(7)
-        for i, d in enumerate(week):
+        for d in week:
             if d.month != today.month:
-                cols[i].write("")
+                html_items.append('<div class="cal-cell cell-empty"></div>')
             else:
                 status = user_history.get(d)
+                day_num = d.day
+                
                 if status == "completed":
-                    cols[i].markdown(f"**{d.day}**\n\n🟢")
+                    cls = "cell-completed"
+                    icon = "🟢"
                 elif status == "paused":
-                    cols[i].markdown(f"**{d.day}**\n\n⏸️")
+                    cls = "cell-paused"
+                    icon = "⏸️"
                 elif d > today:
-                    cols[i].markdown(f"{d.day}\n\n⚪")
+                    cls = "cell-future"
+                    icon = ""
                 elif d == today:
-                    cols[i].markdown(f"**{d.day}**\n\n⏳")
+                    cls = "cell-today"
+                    icon = "⏳"
                 else:
-                    cols[i].markdown(f"{d.day}\n\n🔴")
+                    cls = "cell-missed"
+                    icon = "🔴"
                     
-    st.caption("🟢 Validé | 🔴 Manqué | ⏸️ Pause | ⏳ En attente | ⚪ Futur")
-
+                html_items.append(f'<div class="cal-cell {cls}">{day_num}<span class="cal-badge">{icon}</span></div>')
+                
+    st.markdown(grid_css + f'<div class="cal-grid">{"".join(html_items)}</div>', unsafe_allow_html=True)
+    st.caption("🟢 Validé &nbsp;|&nbsp; 🔴 Manqué &nbsp;|&nbsp; ⏸️ Pause &nbsp;|&nbsp; ⏳ En attente &nbsp;|&nbsp; ⚪ Futur")
+    
 # --- APPLICATION ---
 def main():
     today = date.today()
@@ -196,9 +242,9 @@ def main():
         st.title("🔒 Connexion au Défi")
         col_l1, col_l2 = st.columns([2, 1])
         with col_l1:
-            selected_user = st.selectbox("Choisir votre profil", ["-- Choisir un nom --"] + list(PARTICIPANTS.keys()))
+            selected_user = st.selectbox("Choisir votre profil", ["-- Choisir votre nom --"] + list(PARTICIPANTS.keys()))
             if st.button("Accéder au tableau de bord", type="primary", use_container_width=True):
-                if selected_user != "-- Choisir un nom --":
+                if selected_user != "-- Choisir votre nom --":
                     st.session_state.authenticated_user = selected_user
                     st.session_state.show_checkin_popup = True
                     st.rerun()
@@ -215,7 +261,7 @@ def main():
     title_col, side_text_col, logout_col = st.columns([3, 4, 1.2], vertical_alignment="center")
     
     with title_col:
-        st.title("🏆 Défi Squad")
+        st.title("🏆 Défi")
         st.caption(f"Connecté : **{current_user}** | {today.strftime('%d/%m/%Y')}")
         
     with side_text_col:
