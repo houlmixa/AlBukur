@@ -4,19 +4,44 @@ import pandas as pd
 from datetime import date, timedelta
 import calendar
 
-# --- CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="Défi Squad - Suivi d'Habitudes", page_icon="🔥", layout="centered")
+# --- CONFIGURATION (Wide layout for better space utilization) ---
+st.set_page_config(page_title="أهل البكور", page_icon="🔥", layout="wide")
+
+# --- CUSTOM CSS (Tighten whitespace & padding) ---
+st.markdown("""
+    <style>
+        .block-container {
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
+            max-width: 1200px !important;
+        }
+        div[data-testid="stVerticalBlock"] > div {
+            gap: 0.4rem !important;
+        }
+        hr {
+            margin-top: 0.6rem !important;
+            margin-bottom: 0.6rem !important;
+        }
+        .side-text-box {
+            background-color: rgba(128, 128, 128, 0.08);
+            border-left: 3px solid #ff4b4b;
+            padding: 10px 14px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- PARTICIPANTS ET OBJECTIFS ---
 PARTICIPANTS = {
-    "Alice": "Lire 20 pages & Boire 2L d'eau",
-    "Bob": "Séance de sport (45 min)",
-    "Charlie": "Coder 1h hors travail",
-    "David": "10 000 pas & 8h de sommeil"
+    "Amina": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
+    "Fatima": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
+    "Lamiae": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
+    "Ouamima": "Se réveiller avec l'adhan ou à 6 heures au plus tard"
 }
 
 MAX_PAUSE_DAYS = 10
-START_DATE = date(2026, 8, 1)  # Définissez ici la date de lancement du défi
+START_DATE = date(2026, 8, 1)
 
 # --- CONNEXION GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -34,21 +59,16 @@ def load_data() -> pd.DataFrame:
 
 def save_entry(user: str, entry_date: date, status: str):
     df = load_data()
-    # Supprimer toute entrée existante pour ce jour/utilisateur avant de réécrire
     df = df[~((df['user'] == user) & (df['date'] == entry_date))]
-    
     new_row = pd.DataFrame([{"date": entry_date.isoformat(), "user": user, "status": status}])
     df['date'] = df['date'].astype(str)
     updated_df = pd.concat([df, new_row], ignore_index=True)
     conn.update(data=updated_df)
     st.cache_data.clear()
 
-# --- MOTEUR DE CALCUL (SÉRIE, BOUCLIERS, PAUSES) ---
 def compute_user_metrics(user: str, df: pd.DataFrame, today: date):
     user_records = df[df['user'] == user].set_index('date')['status'].to_dict()
     
-    # Remplir automatiquement les jours passés manqués avec des boucliers si disponibles
-    # Chronologie du début jusqu'à hier
     curr = START_DATE
     streak = 0
     savers_bank = 0
@@ -66,20 +86,16 @@ def compute_user_metrics(user: str, df: pd.DataFrame, today: date):
                 savers_bank += 1
                 consecutive_success_counter = 0
         elif status == "paused":
-            # Le mode pause gèle la série sans la briser
             pass
         else:
-            # Jour manqué : tenter d'utiliser un bouclier
             if savers_bank > 0:
                 savers_bank -= 1
                 consecutive_success_counter = 0
-                # La série est préservée
             else:
                 streak = 0
                 consecutive_success_counter = 0
         curr += timedelta(days=1)
 
-    # Évaluation de la journée en cours
     today_status = user_records.get(today)
     if today_status == "completed":
         streak += 1
@@ -88,8 +104,6 @@ def compute_user_metrics(user: str, df: pd.DataFrame, today: date):
         if consecutive_success_counter == 7:
             savers_bank += 1
             consecutive_success_counter = 0
-    elif today_status == "paused":
-        pass
 
     return {
         "user": user,
@@ -102,43 +116,37 @@ def compute_user_metrics(user: str, df: pd.DataFrame, today: date):
         "history": user_records
     }
 
-# --- FENÊTRES MODALES (DIALOGS) ---
 @st.dialog("Validation Quotidienne")
 def checkin_dialog(user: str, today: date, metrics: dict):
     st.subheader(f"👋 Bonjour {user} !")
-    st.info(f"🎯 **Objectif du jour :** {metrics['goal']}")
+    st.info(f"🎯 **Objectif :** {metrics['goal']}")
     
     status = metrics["today_status"]
     
     if status == "completed":
-        st.success("✅ Vous avez déjà validé votre journée aujourd'hui !")
+        st.success("✅ Journée déjà validée !")
         if st.button("Fermer", use_container_width=True):
             st.rerun()
     elif status == "paused":
-        st.warning("⏸️ Votre défi est actuellement en pause pour aujourd'hui.")
+        st.warning("⏸️ Journée actuellement en pause.")
         if st.button("Reprendre et Valider Aujourd'hui", type="primary", use_container_width=True):
             save_entry(user, today, "completed")
-            st.success("Défi validé !")
             st.rerun()
     else:
         st.write("Avez-vous complété votre engagement aujourd'hui ?")
-        
         col_ok, col_pause = st.columns(2)
         with col_ok:
             if st.button("🔥 Marquer comme fait", type="primary", use_container_width=True):
                 save_entry(user, today, "completed")
-                st.success("Objectif enregistré !")
                 st.rerun()
-                
         with col_pause:
             remaining_pauses = MAX_PAUSE_DAYS - metrics["paused_count"]
             if remaining_pauses > 0:
-                if st.button(f"⏸️ Mettre en pause ({remaining_pauses} restants)", use_container_width=True):
+                if st.button(f"⏸️ Pause ({remaining_pauses} restants)", use_container_width=True):
                     save_entry(user, today, "paused")
-                    st.info("Journée mise en pause. Votre série est gelée.")
                     st.rerun()
             else:
-                st.error("Quota max de pauses atteint (10/10).")
+                st.error("Quota de pause atteint (10/10).")
 
 @st.dialog("Calendrier d'Activité")
 def calendar_dialog(user: str, metrics: dict, today: date):
@@ -146,8 +154,7 @@ def calendar_dialog(user: str, metrics: dict, today: date):
     st.caption(f"🎯 Objectif : {metrics['goal']}")
     
     user_history = metrics["history"]
-    
-    cal = calendar.Calendar(firstweekday=0)  # Lundi en premier
+    cal = calendar.Calendar(firstweekday=0)
     month_days = cal.monthdatescalendar(today.year, today.month)
     
     mois_fr = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]
@@ -176,92 +183,94 @@ def calendar_dialog(user: str, metrics: dict, today: date):
                 else:
                     cols[i].markdown(f"{d.day}\n\n🔴")
                     
-    st.caption("Légende : 🟢 Validé | 🔴 Manqué | ⏸️ Pause | ⏳ En attente | ⚪ Futur")
+    st.caption("🟢 Validé | 🔴 Manqué | ⏸️ Pause | ⏳ En attente | ⚪ Futur")
 
-# --- APPLICATION PRINCIPALE ---
+# --- APPLICATION ---
 def main():
     today = date.today()
     
-    # 1. Écran de connexion
     if "authenticated_user" not in st.session_state:
         st.session_state.authenticated_user = None
 
     if not st.session_state.authenticated_user:
         st.title("🔒 Connexion au Défi")
-        st.write("Sélectionnez votre profil pour accéder au tableau de bord :")
-        
-        selected_user = st.selectbox("Choisir un profil", ["-- Choisir un nom --"] + list(PARTICIPANTS.keys()))
-        
-        if st.button("Accéder au tableau de bord", type="primary", use_container_width=True):
-            if selected_user != "-- Choisir un nom --":
-                st.session_state.authenticated_user = selected_user
-                st.session_state.show_checkin_popup = True
-                st.rerun()
-            else:
-                st.warning("Veuillez sélectionner votre nom dans la liste.")
+        col_l1, col_l2 = st.columns([2, 1])
+        with col_l1:
+            selected_user = st.selectbox("Choisir votre profil", ["-- Choisir un nom --"] + list(PARTICIPANTS.keys()))
+            if st.button("Accéder au tableau de bord", type="primary", use_container_width=True):
+                if selected_user != "-- Choisir un nom --":
+                    st.session_state.authenticated_user = selected_user
+                    st.session_state.show_checkin_popup = True
+                    st.rerun()
+                else:
+                    st.warning("Veuillez sélectionner votre nom.")
         return
 
-    # 2. Vue Authentifiée
     current_user = st.session_state.authenticated_user
     data = load_data()
-    
-    # Calcul des métriques pour tous les membres
     all_metrics = {u: compute_user_metrics(u, data, today) for u in PARTICIPANTS.keys()}
     current_metrics = all_metrics[current_user]
 
-    # En-tête
-    top_col1, top_col2 = st.columns([3, 1])
-    with top_col1:
-        st.title("🏆 Classement du Défi")
-        st.caption(f"Connecté en tant que **{current_user}** | {today.strftime('%d/%m/%Y')}")
-    with top_col2:
+    # --- TOP HEADER WITH SIDE TEXT ---
+    title_col, side_text_col, logout_col = st.columns([3, 4, 1.2], vertical_alignment="center")
+    
+    with title_col:
+        st.title("🏆 Défi Squad")
+        st.caption(f"Connecté : **{current_user}** | {today.strftime('%d/%m/%Y')}")
+        
+    with side_text_col:
+        st.markdown(
+            """
+            <div class="side-text-box">
+                📌 <b>Règles rapides :</b> 7 jours d'affilée = 🛡️ 1 Bouclier gagné.<br>
+                Les pauses (max 10) gèlent votre série sans la casser. Validation avant minuit !
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
+
+    with logout_col:
         if st.button("Se déconnecter", use_container_width=True):
             st.session_state.authenticated_user = None
             st.rerun()
+        if st.button("📝 Check-in", use_container_width=True, type="secondary"):
+            checkin_dialog(current_user, today, current_metrics)
 
-    # Déclenchement automatique de la boîte de dialogue après connexion
     if st.session_state.get("show_checkin_popup", False):
         st.session_state.show_checkin_popup = False
         checkin_dialog(current_user, today, current_metrics)
 
-    # 3. Tableau des scores
-    # Tri par série ininterrompue décroissante, puis par total de jours actifs
-    sorted_users = sorted(all_metrics.values(), key=lambda x: (x["streak"], x["total_active"]), reverse=True)
+    st.divider()
 
-    st.write("---")
+    # --- LEADERBOARD ---
+    sorted_users = sorted(all_metrics.values(), key=lambda x: (x["streak"], x["total_active"]), reverse=True)
     rank_icons = ["🥇", "🥈", "🥉", "4️⃣"]
 
     for idx, stat in enumerate(sorted_users):
-        with st.container():
-            col_rank, col_info, col_stats, col_btn = st.columns([1, 4, 3, 2])
+        row_col1, row_col2, row_col3, row_col4 = st.columns([0.6, 3.5, 3.5, 1.4], vertical_alignment="center")
+        
+        icon = rank_icons[idx] if idx < len(rank_icons) else f"{idx+1}."
+        row_col1.markdown(f"### {icon}")
+        
+        row_col2.markdown(f"**{stat['user']}**  \n<small>{stat['goal']}</small>", unsafe_allow_html=True)
+        
+        status_labels = {
+            "completed": "<span style='color:green;'>✅ Validé</span>",
+            "paused": "<span style='color:orange;'>⏸️ En pause</span>",
+            None: "<span style='color:gray;'>⏳ En attente</span>"
+        }
+        today_label = status_labels.get(stat["today_status"], "<span style='color:gray;'>⏳ En attente</span>")
+        
+        row_col3.markdown(
+            f"🔥 <b>{stat['streak']} j</b> &nbsp;|&nbsp; 🛡️ <b>{stat['savers']}</b> &nbsp;|&nbsp; "
+            f"Total: {stat['total_active']} j &nbsp;|&nbsp; Aujourd'hui: {today_label}",
+            unsafe_allow_html=True
+        )
+        
+        if row_col4.button("📅 Historique", key=f"hist_{stat['user']}", use_container_width=True):
+            calendar_dialog(stat['user'], stat, today)
             
-            icon = rank_icons[idx] if idx < len(rank_icons) else f"{idx+1}."
-            col_rank.markdown(f"### {icon}")
-            
-            col_info.markdown(f"**{stat['user']}**\n\n_{stat['goal']}_")
-            
-            # Statut du jour
-            status_labels = {
-                "completed": "✅ Validé",
-                "paused": "⏸️ En pause",
-                None: "⏳ En attente"
-            }
-            today_label = status_labels.get(stat["today_status"], "⏳ En attente")
-            
-            col_stats.markdown(
-                f"🔥 **Série : {stat['streak']} j** | 🛡️ **{stat['savers']}**\n\n"
-                f"Actif : {stat['total_active']} j | Pauses : {stat['paused_count']}/{MAX_PAUSE_DAYS} | Aujourd'hui : {today_label}"
-            )
-            
-            if col_btn.button("📅 Historique", key=f"hist_{stat['user']}", use_container_width=True):
-                calendar_dialog(stat['user'], stat, today)
-                
-            st.divider()
-
-    # Bouton manuel pour rouvrir la modal de check-in
-    st.button("📝 Ouvrir le panneau de validation du jour", on_click=lambda: checkin_dialog(
-        current_user, today, current_metrics
-    ))
+        st.divider()
 
 if __name__ == "__main__":
     main()
