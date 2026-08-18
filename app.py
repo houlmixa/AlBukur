@@ -36,7 +36,7 @@ st.markdown("""
 PARTICIPANTS = {
     "Amina": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
     "Fatima": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
-    "Lamiae": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
+    "Lamya": "Se réveiller avec l'adhan ou à 6 heures au plus tard",
     "Oumaima": "Se réveiller avec l'adhan ou à 6 heures au plus tard"
 }
 
